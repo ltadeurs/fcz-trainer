@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#141112">
+<title>FC Trainer is verhuisd</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #141112; color: #f5f2f0; font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom)); }
+  main { max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+  h1 { font-size: 28px; line-height: 1.2; margin: 24px 0 0; }
+  h1 span { color: #ffe419; }
+  p { margin: 0; color: #b9b2ae; }
+  a.btn, button { display: block; width: 100%; box-sizing: border-box; text-align: center; border: 0; border-radius: 999px; padding: 16px;
+    font: 600 16px system-ui, sans-serif; text-decoration: none; cursor: pointer; }
+  a.btn { background: #ffe419; color: #231f20; }
+  button { background: #2e292a; color: #f5f2f0; }
+  button:disabled { opacity: .5; }
+  ol { margin: 0; padding-left: 20px; color: #b9b2ae; }
+  li + li { margin-top: 6px; }
+  b { color: #f5f2f0; }
+  #status { min-height: 1.5em; color: #f5f2f0; }
+</style>
+</head>
+<body>
+<main>
+  <h1><span>FC</span> Trainer is verhuisd</h1>
+  <p>De app heet nu FC Trainer en staat op een nieuw adres. Je gegevens verhuizen niet vanzelf mee naar de nieuwe app op je beginscherm.</p>
+  <a class="btn" href="https://ltadeurs.github.io/fc-trainer/">Naar de nieuwe app</a>
+  <ol>
+    <li>Heb je nog geen back-up? Tik hieronder op <b>Back-up maken</b> en bewaar het bestand (bijv. in iCloud Drive).</li>
+    <li>Open de nieuwe app in Safari en zet hem via <b>Delen → Zet op beginscherm</b> op je beginscherm.</li>
+    <li>Kies in de nieuwe app <b>Profiel → Instellingen → Back-up terugzetten</b> en kies het bestand.</li>
+    <li>Werkt alles? Dan kun je het oude icoon van je beginscherm verwijderen.</li>
+  </ol>
+  <button id="backup" type="button">Back-up maken van de gegevens op dit adres</button>
+  <p id="status" role="status"></p>
+</main>
+<script>
+  // Leest de gegevens van de oude app (IndexedDB "fcz-trainer") en biedt ze aan als back-up in hetzelfde
+  // formaat als "Back-up maken" in de app, zodat de nieuwe app ze kan terugzetten.
+  var status = document.getElementById('status')
+  var button = document.getElementById('backup')
+  function readAll(db, store) {
+    return new Promise(function (resolve, reject) {
+      if (!db.objectStoreNames.contains(store)) return resolve([])
+      var req = db.transaction(store).objectStore(store).getAll()
+      req.onsuccess = function () { resolve(req.result) }
+      req.onerror = function () { reject(req.error) }
+    })
+  }
+  function openDb() {
+    return new Promise(function (resolve, reject) {
+      var req = indexedDB.open('fcz-trainer')
+      req.onupgradeneeded = function () { req.transaction.abort() } // bestond nog niet: niets aanmaken
+      req.onsuccess = function () { resolve(req.result) }
+      req.onerror = function () { reject(req.error) }
+    })
+  }
+  button.addEventListener('click', async function () {
+    button.disabled = true
+    status.textContent = 'Gegevens lezen…'
+    try {
+      var db = await openDb()
+      var stores = ['exercises', 'workouts', 'routines', 'folders', 'measurements', 'meta']
+      var data = {}
+      for (var i = 0; i < stores.length; i++) data[stores[i]] = await readAll(db, stores[i])
+      var meta = {}
+      data.meta.forEach(function (m) { meta[m.id] = m.value })
+      var finished = data.workouts.filter(function (w) { return w.endTime != null }).length
+      if (!data.exercises.length) throw new Error('Op dit adres staan geen gegevens.')
+      var backup = { app: 'fcz-trainer', format: 1, exportedAt: Date.now(), settings: meta.settings || {}, gym: meta.gym,
+        exercises: data.exercises, workouts: data.workouts, routines: data.routines, folders: data.folders, measurements: data.measurements }
+      var name = 'fc-trainer-backup-' + new Date().toISOString().slice(0, 10) + '.json'
+      var file = new File([JSON.stringify(backup)], name, { type: 'application/json' })
+      if (navigator.canShare && navigator.canShare({ files: [file] }) && /iPhone|iPad|iPod|Android/.test(navigator.userAgent)) {
+        await navigator.share({ files: [file], title: name })
+      } else {
+        var a = document.createElement('a')
+        a.href = URL.createObjectURL(file)
+        a.download = name
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+      }
+      status.textContent = 'Back-up gemaakt: ' + finished + ' workouts, ' + data.routines.length + ' routines, ' + data.measurements.length + ' metingen.'
+    } catch (e) {
+      status.textContent = e && e.name === 'AbortError' ? 'Geen back-up opgeslagen.' : 'Mislukt: ' + (e && e.message ? e.message : e)
+    } finally {
+      button.disabled = false
+    }
+  })
+</script>
+</body>
+</html>
