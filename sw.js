@@ -3,7 +3,8 @@
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
-    for (const k of await caches.keys()) await caches.delete(k)
+    // Alleen de caches van de oude app; de nieuwe app (fc-trainer-…) staat op hetzelfde domein.
+    for (const k of await caches.keys()) if (k.startsWith('fcz-trainer-')) await caches.delete(k)
     await self.registration.unregister()
     for (const c of await self.clients.matchAll({ type: 'window' })) c.navigate(c.url)
   })())
